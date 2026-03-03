@@ -12,11 +12,19 @@ let package = Package(
             targets: ["ito-runner"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/swiftwasm/WasmKit", "0.2.0" ..< "0.3.0"),
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.6.0"),
+    ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "ito-runner"
+            name: "ito-runner",
+            dependencies: [
+                .product(name: "WasmKit", package: "WasmKit"),
+                .product(name: "SwiftSoup", package: "SwiftSoup"),
+            ]
         ),
         .testTarget(
             name: "ito-runnerTests",
