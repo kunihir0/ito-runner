@@ -1,7 +1,7 @@
 import Foundation
 
 /// A custom Decoder that decodes Postcard binary format into Swift `Decodable` types.
-public class ItoPostcardDecoder {
+public class ItoPostcardDecoder: @unchecked Sendable {
     
     public init() {}
     
@@ -13,6 +13,10 @@ public class ItoPostcardDecoder {
     /// - Throws: `ItoError.postcardDecodingError` if decoding fails.
     public func decode<T: Decodable>(_ type: T.Type, from data: [UInt8]) throws -> T {
         let decoder = _PostcardDecoder(data: data)
+        
+        let isMap = (type is PostcardMapDecodable.Type)
+        decoder.userInfo[mapFlagKey] = isMap
+        
         let resolvedType = try T(from: decoder)
         
         // Ensure all bytes were consumed
@@ -23,6 +27,11 @@ public class ItoPostcardDecoder {
         return resolvedType
     }
 }
+
+// Internal protocol so Wrapper types can conform
+protocol PostcardMapDecodable {}
+extension Dictionary: PostcardMapDecodable {}
+let mapFlagKey = CodingUserInfoKey(rawValue: "ito.postcard.isMap")!
 
 fileprivate class _PostcardDecoder: Decoder {
     var codingPath: [CodingKey] = []
@@ -49,6 +58,8 @@ fileprivate class _PostcardDecoder: Decoder {
     }
     
     func container<Key>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key> where Key : CodingKey {
+        // We do NOT throw here anymore. Standard Dictionary<String, ...> behavior 
+        // will simply fail or produce empty dictionaries. We rely on PostcardMap wrapper.
         let container = _PostcardKeyedDecodingContainer<Key>(decoder: self)
         return KeyedDecodingContainer(container)
     }
@@ -60,20 +71,24 @@ fileprivate class _PostcardDecoder: Decoder {
     func singleValueContainer() throws -> SingleValueDecodingContainer {
         return _PostcardSingleValueDecoder(decoder: self)
     }
+    
+    func withMapFlag<T, R>(_ type: T.Type, block: () throws -> R) rethrows -> R {
+        let isMap = (type is PostcardMapDecodable.Type)
+        let previous = userInfo[mapFlagKey]
+        userInfo[mapFlagKey] = isMap
+        defer { userInfo[mapFlagKey] = previous }
+        return try block()
+    }
 }
 
 fileprivate struct _PostcardKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtocol {
     var codingPath: [CodingKey] { decoder.codingPath }
     let decoder: _PostcardDecoder
-    // Postcard doesn't encode keys, so we must just claim every key exists 
-    // and rely on sequential reads. This requires the struct's Decodable 
-    // implementation to read things in exact order.
     var allKeys: [Key] = [] 
     
     func contains(_ key: Key) -> Bool { return true }
     
     func decodeNil(forKey key: Key) throws -> Bool {
-        // Look ahead for Option flag 0
         if !decoder.isAtEnd && decoder.data[decoder.currentIndex] == 0 {
             decoder.currentIndex += 1
             return true
@@ -87,10 +102,12 @@ fileprivate struct _PostcardKeyedDecodingContainer<Key: CodingKey>: KeyedDecodin
     func decode<T>(_ type: T.Type, forKey key: Key) throws -> T where T : Decodable {
         decoder.codingPath.append(key)
         defer { decoder.codingPath.removeLast() }
-        return try T(from: decoder)
+        
+        return try decoder.withMapFlag(type) {
+            try T(from: decoder)
+        }
     }
     
-    // Explicitly override decodeIfPresent to consume the optional byte indicator
     func decodeIfPresent<T>(_ type: T.Type, forKey key: Key) throws -> T? where T : Decodable {
         decoder.codingPath.append(key)
         defer { decoder.codingPath.removeLast() }
@@ -99,7 +116,9 @@ fileprivate struct _PostcardKeyedDecodingContainer<Key: CodingKey>: KeyedDecodin
         if isNil {
             return nil
         }
-        return try T(from: decoder)
+        return try decoder.withMapFlag(type) {
+            try T(from: decoder)
+        }
     }
     
     func decodeIfPresent(_ type: Bool.Type, forKey key: Key) throws -> Bool? {
@@ -279,7 +298,14 @@ fileprivate struct _PostcardUnkeyedDecodingContainer: UnkeyedDecodingContainer {
         do {
             let singleDecoder = try decoder.singleValueContainer() as! _PostcardSingleValueDecoder
             let lengthInt = try singleDecoder.decodeVarint()
-            self.count = Int(lengthInt)
+            
+            if let isMap = decoder.userInfo[mapFlagKey] as? Bool, isMap {
+                 // For maps, count is ENTRIES. But UnkeyedContainer iterates ITEMS (Key+Value).
+                 // So we multiply by 2.
+                 self.count = Int(lengthInt) * 2
+            } else {
+                 self.count = Int(lengthInt)
+            }
         } catch {
             self.count = 0
         }
@@ -308,7 +334,10 @@ fileprivate struct _PostcardUnkeyedDecodingContainer: UnkeyedDecodingContainer {
         let key = AnyCodingKey(intValue: currentIndex)!
         decoder.codingPath.append(key)
         defer { decoder.codingPath.removeLast() }
-        let value = try T(from: decoder)
+        
+        let value = try decoder.withMapFlag(type) {
+            try T(from: decoder)
+        }
         currentIndex += 1
         return value
     }
@@ -531,7 +560,9 @@ fileprivate struct _PostcardSingleValueDecoder: SingleValueDecodingContainer {
     }
     
     func decode<T>(_ type: T.Type) throws -> T where T : Decodable {
-        return try T(from: decoder)
+        return try decoder.withMapFlag(type) {
+            try T(from: decoder)
+        }
     }
     
     // MARK: - Postcard specific decoding helpers
@@ -547,7 +578,7 @@ fileprivate struct _PostcardSingleValueDecoder: SingleValueDecodingContainer {
             shift += 7
             
             // Postcard uses at most 10 bytes for varints
-            if shift >= 70 {
+            if shift > 70 {
                 throw ItoError.postcardDecodingError("Varint exceeds maximum 64-bit size.")
             }
         } while (byte & 0x80) != 0
