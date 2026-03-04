@@ -40,11 +40,12 @@ struct AtsumaruRustSDKTests {
         let fileManager = FileManager.default
         let currentDir = fileManager.currentDirectoryPath
         let releasePath =
-            "\(currentDir)/projects/atsumaru/target/wasm32-unknown-unknown/debug/atsumaru.wasm"
+            "\(currentDir)/projects/atsumaru/atsumaru.wasm"
 
         let url = URL(fileURLWithPath: releasePath)
         let runner = ItoRunner()
         await runner.setNetModule(NativeNetModule())
+        await runner.setStdModule(DefaultStdModule())
         try await runner.loadPlugin(from: url)
         return runner
     }
@@ -92,6 +93,9 @@ struct AtsumaruRustSDKTests {
         #expect(
             updatedManga.status == .Ongoing || updatedManga.status == .Completed,
             "Status should be correctly evaluated")
+        #expect(
+            updatedManga.tags != nil && !(updatedManga.tags?.isEmpty ?? true),
+            "Tags should be populated")
         #expect(updatedManga.chapters != nil, "Chapters array must be created")
 
         if let chapters = updatedManga.chapters {
@@ -101,7 +105,81 @@ struct AtsumaruRustSDKTests {
                 #expect(!firstChapter.key.isEmpty, "Chapters should have a valid unique ID string")
                 #expect(
                     firstChapter.url?.contains(firstChapter.key) == true, "Chapter URL contains ID")
+                #expect(
+                    firstChapter.scanlator != nil && !(firstChapter.scanlator?.isEmpty ?? true),
+                    "Scanlator should be populated")
+                #expect(firstChapter.chapter != nil, "Chapter number should be populated")
             }
+        }
+    }
+
+    @Test("Search Manga List using SDK via get_search_manga_list export")
+    func searchMangaList() async throws {
+        let runner = try await loadRunner()
+
+        let query = "Estate"
+        let result = try await runner.getSearchMangaList(query: query, page: 1, filters: nil)
+
+        print("Search fetched \(result.entries.count) mangas")
+        #expect(result.entries.count > 0, "Search results should not be empty")
+
+        if let firstManga = result.entries.first {
+            #expect(!firstManga.key.isEmpty, "Manga must have a key ID")
+            #expect(!firstManga.title.isEmpty, "Manga must have a title")
+            #expect(
+                firstManga.title.lowercased().contains("estate"),
+                "Title should be related to the search query")
+        }
+    }
+
+    @Test("Fetches Page List using SDK via get_page_list export")
+    func fetchPageList() async throws {
+        let runner = try await loadRunner()
+
+        let manga = Manga(key: "fX0YJ", title: "The Greatest Estate Developer")
+        // To safely get a valid chapter, we first fetch the chapters list
+        let updatedManga = try await runner.getMangaUpdate(
+            manga: manga, needsDetails: false, needsChapters: true)
+
+        guard let firstChapter = updatedManga.chapters?.first else {
+            Issue.record("No chapters found to fetch pages for.")
+            return
+        }
+
+        let pages = try await runner.getPageList(manga: updatedManga, chapter: firstChapter)
+
+        #expect(pages.count > 0, "Should fetch at least one page")
+        if let firstPage = pages.first {
+            #expect(firstPage.index == 0, "First page index should be 0")
+            if case .url(let urlStr) = firstPage.content {
+                #expect(urlStr.hasPrefix("http"), "Page URL should be well-formed")
+            } else {
+                Issue.record("Expected .url content variant")
+            }
+        }
+    }
+
+    @Test("Reproduce Wasm Trap with multiple Manga Updates")
+    func testWasmTrapGetMangaUpdate() async throws {
+        let runner = try await loadRunner()
+
+        // Using different mangas, including potentially huge ones like Martial Peak ("0g5sF")
+        let tests = ["fX0YJ", "TKRmo", "OXzpi"]
+
+        for mangaId in tests {
+            let manga = Manga(key: mangaId, title: "", status: .Unknown, contentRating: .Safe)
+
+            print("[DEBUG] Fetching manga update for \(mangaId)...")
+            let updatedManga = try await runner.getMangaUpdate(
+                manga: manga,
+                needsDetails: true,
+                needsChapters: true
+            )
+
+            #expect(!updatedManga.title.isEmpty, "Title should be populated for \(mangaId)")
+            print(
+                "Successfully updated \(mangaId): \(updatedManga.title), chapters: \(updatedManga.chapters?.count ?? 0)"
+            )
         }
     }
 }

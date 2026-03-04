@@ -169,6 +169,12 @@ public actor ItoRunner {
 
         let responseLen = Int(packed & 0xFFFF_FFFF)
         let responsePtr = Int(packed >> 32)
+        defer {
+            deallocBytes(
+                ptr: Int32(bitPattern: UInt32(responsePtr)),
+                len: Int32(bitPattern: UInt32(responseLen)))
+        }
+
         let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
         return try self.postcardDecoder.decode(HomeLayout.self, from: responseBytes)
     }
@@ -189,13 +195,26 @@ public actor ItoRunner {
         return (Int32(bitPattern: pointer), Int32(bytes.count))
     }
 
+    private func deallocBytes(ptr: Int32, len: Int32) {
+        if len == 0 || ptr == 0 { return }
+        do {
+            _ = try self.executeExport(
+                "dealloc", args: [.i32(UInt32(bitPattern: ptr)), .i32(UInt32(bitPattern: len))])
+        } catch {
+            print("[ItoRunner] Warning: Failed to dealloc memory at \(ptr) (len \(len))")
+        }
+    }
+
     /// Executes `get_search_manga_list(query: String, page: Int32, filters: [FilterStruct])`
     public func getSearchMangaList(query: String, page: Int32, filters: [FilterItem]?) async throws
         -> MangaPageResult
     {
         let qInfo = try allocString(query)
+        defer { deallocBytes(ptr: qInfo.ptr, len: qInfo.len) }
+
         let fBytes = try self.postcardEncoder.encode(filters ?? [])
         let fInfo = try allocBytes(fBytes)
+        defer { deallocBytes(ptr: fInfo.ptr, len: fInfo.len) }
 
         let result = try self.executeExport(
             "get_search_manga_list",
@@ -211,6 +230,12 @@ public actor ItoRunner {
 
         let responseLen = Int(packed & 0xFFFF_FFFF)
         let responsePtr = Int(packed >> 32)
+        defer {
+            deallocBytes(
+                ptr: Int32(bitPattern: UInt32(responsePtr)),
+                len: Int32(bitPattern: UInt32(responseLen)))
+        }
+
         let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
         return try self.postcardDecoder.decode(MangaPageResult.self, from: responseBytes)
     }
@@ -219,6 +244,7 @@ public actor ItoRunner {
     public func getMangaList(listing: Listing, page: Int32) async throws -> MangaPageResult {
         let lBytes = try self.postcardEncoder.encode(listing)
         let lInfo = try allocBytes(lBytes)
+        defer { deallocBytes(ptr: lInfo.ptr, len: lInfo.len) }
 
         let result = try self.executeExport(
             "get_manga_list",
@@ -233,6 +259,12 @@ public actor ItoRunner {
 
         let responseLen = Int(packed & 0xFFFF_FFFF)
         let responsePtr = Int(packed >> 32)
+        defer {
+            deallocBytes(
+                ptr: Int32(bitPattern: UInt32(responsePtr)),
+                len: Int32(bitPattern: UInt32(responseLen)))
+        }
+
         let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
         return try self.postcardDecoder.decode(MangaPageResult.self, from: responseBytes)
     }
@@ -246,6 +278,7 @@ public actor ItoRunner {
         print("[DEBUG] getMangaUpdate Swift Manga Payload (len \(mBytes.count)): \(hexString)")
 
         let mInfo = try allocBytes(mBytes)
+        defer { deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
 
         let result = try self.executeExport(
             "get_manga_update",
@@ -260,6 +293,12 @@ public actor ItoRunner {
 
         let responseLen = Int(packed & 0xFFFF_FFFF)
         let responsePtr = Int(packed >> 32)
+        defer {
+            deallocBytes(
+                ptr: Int32(bitPattern: UInt32(responsePtr)),
+                len: Int32(bitPattern: UInt32(responseLen)))
+        }
+
         let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
         return try self.postcardDecoder.decode(Manga.self, from: responseBytes)
     }
@@ -268,9 +307,11 @@ public actor ItoRunner {
     public func getPageList(manga: Manga, chapter: Chapter) async throws -> [Page] {
         let mBytes = try self.postcardEncoder.encode(manga)
         let mInfo = try allocBytes(mBytes)
+        defer { deallocBytes(ptr: mInfo.ptr, len: mInfo.len) }
 
         let cBytes = try self.postcardEncoder.encode(chapter)
         let cInfo = try allocBytes(cBytes)
+        defer { deallocBytes(ptr: cInfo.ptr, len: cInfo.len) }
 
         let result = try self.executeExport(
             "get_page_list",
@@ -285,6 +326,12 @@ public actor ItoRunner {
 
         let responseLen = Int(packed & 0xFFFF_FFFF)
         let responsePtr = Int(packed >> 32)
+        defer {
+            deallocBytes(
+                ptr: Int32(bitPattern: UInt32(responsePtr)),
+                len: Int32(bitPattern: UInt32(responseLen)))
+        }
+
         let responseBytes = try self.readMemory(offset: responsePtr, length: responseLen)
         return try self.postcardDecoder.decode([Page].self, from: responseBytes)
     }

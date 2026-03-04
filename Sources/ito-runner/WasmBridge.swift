@@ -14,6 +14,8 @@ public class WasmBridge {
     public var stdModule: StdModule?
     public var defaultsModule: DefaultsModule?
 
+    private var pendingNetResponseBytes: [UInt8]? = nil
+
     public init(runner: ItoRunner) {
         self.runner = runner
     }
@@ -31,7 +33,6 @@ public class WasmBridge {
     public func writeResponse<T: Encodable>(_ response: T) async throws -> Int64 {
         let bytes = try runner.postcardEncoder.encode(response)
 
-        // Ask Wasm to allocate memory for us
         let allocResult = try await runner.executeExport("alloc", args: [.i32(UInt32(bytes.count))])
         guard let pointerVal = allocResult.first, case .i32(let pointer) = pointerVal else {
             throw ItoError.wasmTrap("Failed to allocate memory for response")
@@ -41,9 +42,8 @@ public class WasmBridge {
         try await runner.writeMemory(offset: Int(pointer), bytes: Array(bytes))
 
         // Pack pointer and length into Int64
-        let len = Int64(bytes.count)
-        let ptr = Int64(pointer)
-        return (ptr << 32) | len
+        let packed = (UInt64(pointer) << 32) | UInt64(UInt32(bytes.count))
+        return Int64(bitPattern: packed)
     }
 
     /// Helper to write an empty or error response (e.g., throwing a swift error across the FFI)
@@ -54,7 +54,7 @@ public class WasmBridge {
     /// Builds the host functions that the WebAssembly plugin can import.
     public func buildImports(store: Store) -> Imports {
         // --- ito:core/net ---
-        let netFetch = Function(store: store, parameters: [.i32, .i32], results: [.i64]) {
+        let netFetch = Function(store: store, parameters: [.i32, .i32], results: [.i32]) {
             [weak self] caller, args in
             guard let self = self else { return [] }
             let requestPtr = args[0].i32
@@ -110,30 +110,35 @@ public class WasmBridge {
                     response = box.response!
                 }
                 let responseBytes = try self.runner.postcardEncoder.encode(response)
-
-                guard let alloc = caller.instance?.exports[function: "alloc"] else {
-                    fatalError("Plugin must export alloc(size)")
-                }
-
-                let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
-                let responsePtr = allocResult[0].i32
-
-                memory.withUnsafeMutableBufferPointer(
-                    offset: UInt(responsePtr), count: responseBytes.count
-                ) { buffer in
-                    responseBytes.withUnsafeBytes { src in
-                        buffer.copyMemory(from: UnsafeRawBufferPointer(src))
-                    }
-                }
-
-                let packed =
-                    (UInt64(responsePtr) << 32)
-                    | UInt64(UInt32(responseBytes.count))
-                return [.i64(packed)]
-
+                self.pendingNetResponseBytes = responseBytes
+                return [.i32(UInt32(responseBytes.count))]
             } catch {
                 fatalError("Failed to decode NetRequest or serialize NetResponse: \(error)")
             }
+        }
+
+        let netFetchRead = Function(store: store, parameters: [.i32], results: []) {
+            [weak self] caller, args in
+            guard let self = self else { return [] }
+            let destPtr = args[0].i32
+
+            guard let bytes = self.pendingNetResponseBytes else {
+                fatalError("fetch_read called but no pending response bytes exist")
+            }
+            guard let memory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Plugin must export linear memory")
+            }
+
+            memory.withUnsafeMutableBufferPointer(
+                offset: UInt(destPtr), count: bytes.count
+            ) { buffer in
+                bytes.withUnsafeBytes { src in
+                    buffer.copyMemory(from: UnsafeRawBufferPointer(src))
+                }
+            }
+
+            self.pendingNetResponseBytes = nil
+            return []
         }
 
         let htmlParse = Function(store: store, parameters: [.i32, .i32], results: [.i32]) {
@@ -189,7 +194,11 @@ public class WasmBridge {
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32
 
-            memory.withUnsafeMutableBufferPointer(
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Memory lost after alloc")
+            }
+
+            refetchedMemory.withUnsafeMutableBufferPointer(
                 offset: UInt(responsePtr), count: responseBytes.count
             ) { buffer in
                 responseBytes.withUnsafeBytes { src in
@@ -206,10 +215,9 @@ public class WasmBridge {
             guard let self = self else { return [] }
             let elementId = args[0].i32
 
-            guard let memory = caller.instance?.exports[memory: "memory"],
-                let alloc = caller.instance?.exports[function: "alloc"]
+            guard let alloc = caller.instance?.exports[function: "alloc"]
             else {
-                fatalError("Plugin must export memory and alloc")
+                fatalError("Plugin must export alloc")
             }
 
             guard let module = self.htmlModule else {
@@ -222,7 +230,11 @@ public class WasmBridge {
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32
 
-            memory.withUnsafeMutableBufferPointer(
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Memory lost after alloc")
+            }
+
+            refetchedMemory.withUnsafeMutableBufferPointer(
                 offset: UInt(responsePtr), count: responseBytes.count
             ) { buffer in
                 responseBytes.withUnsafeBytes { src in
@@ -263,7 +275,11 @@ public class WasmBridge {
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32
 
-            memory.withUnsafeMutableBufferPointer(
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Memory lost after alloc")
+            }
+
+            refetchedMemory.withUnsafeMutableBufferPointer(
                 offset: UInt(responsePtr), count: responseBytes.count
             ) { buffer in
                 responseBytes.withUnsafeBytes { src in
@@ -316,7 +332,11 @@ public class WasmBridge {
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32
 
-            memory.withUnsafeMutableBufferPointer(
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Memory lost after alloc")
+            }
+
+            refetchedMemory.withUnsafeMutableBufferPointer(
                 offset: UInt(responsePtr), count: responseBytes.count
             ) { buffer in
                 responseBytes.withUnsafeBytes { src in
@@ -415,7 +435,11 @@ public class WasmBridge {
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32
 
-            memory.withUnsafeMutableBufferPointer(
+            guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
+                fatalError("Memory lost after alloc")
+            }
+
+            refetchedMemory.withUnsafeMutableBufferPointer(
                 offset: UInt(responsePtr), count: responseBytes.count
             ) { buffer in
                 responseBytes.withUnsafeBytes { src in
@@ -453,7 +477,10 @@ public class WasmBridge {
         }
 
         let imports: Imports = [
-            "ito:core/net": ["fetch": netFetch],
+            "ito:core/net": [
+                "fetch": netFetch,
+                "fetch_read": netFetchRead,
+            ],
             "ito:core/html": [
                 "parse": htmlParse,
                 "select": htmlSelect,

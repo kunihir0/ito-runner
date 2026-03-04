@@ -18,6 +18,13 @@ public class ItoPostcardEncoder: @unchecked Sendable {
             return encoder.data
         }
 
+        if let bytes = value as? [UInt8] {
+            var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+            try container.encodeVarint(UInt64(bytes.count))
+            encoder.data.append(contentsOf: bytes)
+            return encoder.data
+        }
+
         if let array = value as? PostcardArrayMarker {
             var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
             try container.encodeVarint(UInt64(array.postcardCount))
@@ -98,10 +105,18 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             return
         }
 
+        if let bytes = value as? [UInt8] {
+            var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+            try container.encodeVarint(UInt64(bytes.count))
+            encoder.data.append(contentsOf: bytes)
+            return
+        }
+
         if let array = value as? PostcardArrayMarker {
             var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
             try container.encodeVarint(UInt64(array.postcardCount))
         }
+
         try value.encode(to: encoder)
     }
 
@@ -116,6 +131,13 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
 
             if let map = value as? PostcardMapMarker {
                 try map.encodePostcardMap(to: encoder)
+                return
+            }
+
+            if let bytes = value as? [UInt8] {
+                var single = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+                try single.encodeVarint(UInt64(bytes.count))
+                encoder.data.append(contentsOf: bytes)
                 return
             }
 
@@ -356,10 +378,19 @@ private struct _PostcardUnkeyedEncodingContainer: UnkeyedEncodingContainer {
             return
         }
 
+        if let bytes = value as? [UInt8] {
+            var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+            try container.encodeVarint(UInt64(bytes.count))
+            encoder.data.append(contentsOf: bytes)
+            count += 1
+            return
+        }
+
         if let array = value as? PostcardArrayMarker {
             var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
             try container.encodeVarint(UInt64(array.postcardCount))
         }
+
         try value.encode(to: encoder)
         count += 1
     }
@@ -371,7 +402,13 @@ private struct _PostcardUnkeyedEncodingContainer: UnkeyedEncodingContainer {
         if let value = value {
             var container = encoder.singleValueContainer()
             try container.encode(true)
-            try value.encode(to: encoder)
+            if let bytes = value as? [UInt8] {
+                var single = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+                try single.encodeVarint(UInt64(bytes.count))
+                encoder.data.append(contentsOf: bytes)
+            } else {
+                try value.encode(to: encoder)
+            }
         } else {
             var container = encoder.singleValueContainer()
             try container.encodeNil()

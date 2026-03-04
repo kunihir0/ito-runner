@@ -128,7 +128,7 @@ public enum PageContent: Codable, Sendable {
     case text(String)
 
     public init(from decoder: Decoder) throws {
-        var container = try decoder.unkeyedContainer()
+        let container = try decoder.singleValueContainer()
         let variant = try container.decode(UInt32.self)
         switch variant {
         case 0: self = .url(try container.decode(String.self))
@@ -193,7 +193,7 @@ public enum FilterValue: Codable, Sendable {
     case string(String)
 
     public init(from decoder: Decoder) throws {
-        var container = try decoder.unkeyedContainer()
+        let container = try decoder.singleValueContainer()
         let variant = try container.decode(UInt32.self)
         switch variant {
         case 0: self = .boolean(try container.decode(Bool.self))
@@ -234,7 +234,7 @@ public struct FilterItem: Codable, Sendable {
         // Based on Aidoku's implementation, FilterItem is an enum with string variants and struct variants
         // Let's implement it as a String for now, since it can coerce in the test `aidoku::FilterItem::from("Action")`
         // Or if it refers to actual struct instances. For now, matching the FilterStruct format.
-        var container = try decoder.unkeyedContainer()
+        let container = try decoder.singleValueContainer()
         self.type = try container.decode(String.self)
         self.name = try container.decode(String.self)
         self.value = try container.decode(FilterValue.self)
@@ -265,7 +265,7 @@ public enum LinkValue: Codable, Sendable {
     case listing(Listing)
 
     public init(from decoder: Decoder) throws {
-        var container = try decoder.unkeyedContainer()
+        let container = try decoder.singleValueContainer()
         let variant = try container.decode(UInt32.self)
         switch variant {
         case 0: self = .url(try container.decode(String.self))
@@ -327,24 +327,28 @@ public enum HomeComponentValue: Codable, Sendable {
     case links([Link])
 
     public init(from decoder: Decoder) throws {
-        var container = try decoder.unkeyedContainer()
+        let container = try decoder.singleValueContainer()
         let variant = try container.decode(UInt32.self)
         switch variant {
         case 0:
             self = .scroller(
-                try container.decode([Manga].self), try container.decodeIfPresent(Listing.self))
+                try container.decode([Manga].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
         case 1:
             self = .mangaList(
-                try container.decode(Bool.self), try container.decodeIfPresent(Int32.self),
-                try container.decode([Manga].self), try container.decodeIfPresent(Listing.self))
+                try container.decode(Bool.self),
+                container.decodeNil() ? nil : try container.decode(Int32.self),
+                try container.decode([Manga].self),
+                container.decodeNil() ? nil : try container.decode(Listing.self))
         case 2:
             self = .mangaChapterList(
-                try container.decodeIfPresent(Int32.self),
+                container.decodeNil() ? nil : try container.decode(Int32.self),
                 try container.decode([MangaWithChapter].self),
-                try container.decodeIfPresent(Listing.self))
+                container.decodeNil() ? nil : try container.decode(Listing.self))
         case 3:
             self = .bigScroller(
-                try container.decode([Manga].self), try container.decodeIfPresent(Float32.self))
+                try container.decode([Manga].self),
+                container.decodeNil() ? nil : try container.decode(Float32.self))
         case 4: self = .filters(try container.decode([FilterItem].self))
         case 5: self = .links(try container.decode([Link].self))
         default:
