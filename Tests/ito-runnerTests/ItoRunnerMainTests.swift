@@ -7,12 +7,6 @@ import WasmKit
 
 @Suite("Ito Runner - Main API Tests")
 struct ItoRunnerMainTests {
-
-    // Using a compiled rust WASM file that uses standard aidoku APIs.
-    // For these unit tests we'll just test the initialization and basic memory/export
-    // calls using a dummy WAT. We can't fully test getMangaList etc without an
-    // actual compiled Rust Aidoku plugin that exports those methods.
-
     @Test("Runner Initialization")
     func testInitialization() async throws {
         let runner = ItoRunner()
