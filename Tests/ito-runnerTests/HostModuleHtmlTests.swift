@@ -38,6 +38,10 @@ final class MockHtmlModule: HtmlModule, Sendable {
     func free(elementId: UInt32) {
         // no-op
     }
+
+    func clear() {
+        // no-op
+    }
 }
 
 @Suite("Host Modules - HtmlModule")
@@ -134,7 +138,7 @@ struct HostModuleHtmlTests {
         print("responseBytes length: \(responseBytes.count)")
         print("responseBytes: \(responseBytes)")
 
-        let elements = try runner.postcardDecoder.decode([UInt32].self, from: responseBytes)
+        let elements = try runner.postcardDecoder.decode([Int32].self, from: responseBytes)
         #expect(elements == [43, 44])
     }
 }

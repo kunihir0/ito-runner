@@ -42,6 +42,25 @@ public struct PluginInfo: Codable, Sendable {
         self.languages = languages
         self.type = type
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, version, url, sourceUrl, contentRating, nsfw, language, languages, type
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.version = try container.decode(Int.self, forKey: .version)
+        self.url = try container.decodeIfPresent(String.self, forKey: .url)
+        self.sourceUrl = try container.decodeIfPresent(String.self, forKey: .sourceUrl)
+        self.contentRating = try container.decodeIfPresent(
+            ContentRating.self, forKey: .contentRating)
+        self.nsfw = try container.decodeIfPresent(Int.self, forKey: .nsfw)
+        self.language = try container.decodeIfPresent(String.self, forKey: .language)
+        self.languages = try container.decodeIfPresent([String].self, forKey: .languages)
+        self.type = try container.decodeIfPresent(PluginType.self, forKey: .type) ?? .manga
+    }
 }
 
 public enum ContentRating: Int32, Codable, Sendable {

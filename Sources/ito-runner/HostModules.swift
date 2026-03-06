@@ -40,6 +40,7 @@ public protocol HtmlModule: Sendable {
     func text(elementId: UInt32) throws -> String
     func attr(elementId: UInt32, name: String) throws -> String?
     func free(elementId: UInt32)
+    func clear()
 }
 
 // MARK: - JS Module

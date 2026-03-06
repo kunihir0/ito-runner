@@ -1,5 +1,6 @@
 import Foundation
 import WasmKit
+import ZIPFoundation
 
 /// The main execution engine for ito-runner.
 /// It wraps WasmKit to load, instantiate, and execute WebAssembly plugins.
@@ -43,15 +44,19 @@ public actor ItoRunner {
     /// - Parameter url: The file URL to the `.wasm` binary.
     /// - Throws: An `ItoError` if loading or instantiation fails.
     public func loadPlugin(from url: URL) throws {
-        do {
-            let wasmBytes = try Data(contentsOf: url)
+        let wasmBytes = try Data(contentsOf: url)
+        try loadPlugin(fromBytes: [UInt8](wasmBytes))
+    }
 
+    /// Loads a plugin directly from a WebAssembly byte array.
+    public func loadPlugin(fromBytes wasmBytes: [UInt8]) throws {
+        do {
             // 1. Initialize a new Wasm Engine & Store
             let engine = Engine()
             let store = Store(engine: engine)
 
             // 2. Parse the Wasm Module
-            let module = try parseWasm(bytes: [UInt8](wasmBytes))
+            let module = try parseWasm(bytes: wasmBytes)
 
             // 3. Setup Imports
             let bridge = WasmBridge(runner: self)
@@ -61,6 +66,9 @@ public actor ItoRunner {
             bridge.stdModule = self.stdModule
             bridge.defaultsModule = self.defaultsModule
             let imports = bridge.buildImports(store: store)
+
+            // Clear any lingering state from previous runs
+            bridge.htmlModule?.clear()
 
             // 4. Instantiate the plugin.
             self.instance = try module.instantiate(store: store, imports: imports)
@@ -80,6 +88,39 @@ public actor ItoRunner {
         } catch {
             throw ItoError.wasmTrap("Failed to load Wasm plugin: \(error.localizedDescription)")
         }
+    }
+
+    /// Loads a packaged `.ito` bundle, extracting the wasm logic and returning the manifest.
+    public func loadBundle(from url: URL) throws -> PluginManifest? {
+        guard let archive = Archive(url: url, accessMode: .read) else {
+            throw ItoError.wasmTrap("Failed to read .ito archive at \(url)")
+        }
+
+        var manifest: PluginManifest? = nil
+        var wasmBytes: [UInt8]? = nil
+
+        for entry in archive {
+            if entry.path.hasSuffix(".json") {
+                var data = Data()
+                _ = try archive.extract(entry) { dict in
+                    data.append(dict)
+                }
+                manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
+            } else if entry.path.hasSuffix(".wasm") {
+                var data = Data()
+                _ = try archive.extract(entry) { dict in
+                    data.append(dict)
+                }
+                wasmBytes = [UInt8](data)
+            }
+        }
+
+        guard let wasm = wasmBytes else {
+            throw ItoError.wasmTrap("Archive did not contain a .wasm file.")
+        }
+
+        try loadPlugin(fromBytes: wasm)
+        return manifest
     }
 
     // MARK: - Memory Utilities

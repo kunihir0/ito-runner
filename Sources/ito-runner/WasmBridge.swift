@@ -162,6 +162,7 @@ public class WasmBridge {
             }
 
             let elementId = try module.parse(html: htmlString)
+            print("WasmBridge HtmlParse returning: \(elementId)")
             return [.i32(elementId)]
         }
 
@@ -188,8 +189,10 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
+            print("WasmBridge HtmlSelect(id: \(elementId), selector: '\(selectorString)')")
             let resultIds = try module.select(elementId: elementId, selector: selectorString)
-            let responseBytes = try self.runner.postcardEncoder.encode(resultIds)
+            let resultInt32s = resultIds.map { Int32(bitPattern: $0) }
+            let responseBytes = try self.runner.postcardEncoder.encode(resultInt32s)
 
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32
@@ -224,6 +227,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
+            print("WasmBridge HtmlText(id: \(elementId))")
             let text = try module.text(elementId: elementId)
             let responseBytes = try self.runner.postcardEncoder.encode(text)
 
@@ -269,8 +273,15 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
+            print("WasmBridge HtmlAttr(id: \(elementId), name: '\(attrName)')")
             let attrVal = try module.attr(elementId: elementId, name: attrName)
-            let responseBytes = try self.runner.postcardEncoder.encode(attrVal)
+            var responseBytes: [UInt8] = []
+            if let val = attrVal {
+                responseBytes.append(1)  // Option::Some
+                responseBytes.append(contentsOf: try self.runner.postcardEncoder.encode(val))
+            } else {
+                responseBytes.append(0)  // Option::None
+            }
 
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32
@@ -300,6 +311,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
+            print("WasmBridge HtmlFree(id: \(elementId))")
             module.free(elementId: elementId)
             return []
         }
@@ -430,7 +442,13 @@ public class WasmBridge {
             }
 
             let val = module.get(key: key)
-            let responseBytes = try self.runner.postcardEncoder.encode(val)
+            var responseBytes: [UInt8] = []
+            if let v = val {
+                responseBytes.append(1)  // Option::Some
+                responseBytes.append(contentsOf: try self.runner.postcardEncoder.encode(v))
+            } else {
+                responseBytes.append(0)  // Option::None
+            }
 
             let allocResult = try alloc([.i32(UInt32(responseBytes.count))])
             let responsePtr = allocResult[0].i32

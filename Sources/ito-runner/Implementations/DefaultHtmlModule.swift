@@ -79,4 +79,11 @@ public final class DefaultHtmlModule: HtmlModule, @unchecked Sendable {
         defer { lock.unlock() }
         elements.removeValue(forKey: elementId)
     }
+
+    public func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        elements.removeAll()
+        nextElementId = 1
+    }
 }
