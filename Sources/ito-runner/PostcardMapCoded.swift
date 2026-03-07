@@ -57,3 +57,56 @@ public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable
 extension PostcardMapCoded: Equatable where Value: Equatable {}
 
 extension PostcardMapCoded: @unchecked Sendable where Key: Sendable, Value: Sendable {}
+
+@propertyWrapper
+public struct PostcardOptionalMapCoded<Key: Hashable & Codable, Value: Codable>: Codable,
+    PostcardMapDecodable
+{
+    public var wrappedValue: [Key: Value]?
+
+    public init(wrappedValue: [Key: Value]?) {
+        self.wrappedValue = wrappedValue
+    }
+
+    public init(from decoder: Decoder) throws {
+        let singleContainer = try decoder.singleValueContainer()
+        // If it's an Option::None in Postcard, it consumes the '0' byte
+        if singleContainer.decodeNil() {
+            self.wrappedValue = nil
+        } else {
+            // It was Option::Some, the '1' byte was consumed. Now read the map.
+            var container = try decoder.unkeyedContainer()
+            let totalItems = container.count ?? 0
+            let entries = totalItems / 2
+            var dict = [Key: Value](minimumCapacity: entries)
+
+            for _ in 0..<entries {
+                let key = try container.decode(Key.self)
+                let value = try container.decode(Value.self)
+                dict[key] = value
+            }
+
+            self.wrappedValue = dict
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var singleContainer = encoder.singleValueContainer()
+        if let dict = wrappedValue {
+            try singleContainer.encode(true) // 1 for Option::Some
+            
+            var container = encoder.unkeyedContainer()
+            try container.encode(UInt64(dict.count))
+            for (key, value) in dict {
+                try container.encode(key)
+                try container.encode(value)
+            }
+        } else {
+            try singleContainer.encodeNil() // 0 for Option::None
+        }
+    }
+}
+
+extension PostcardOptionalMapCoded: Equatable where Value: Equatable {}
+
+extension PostcardOptionalMapCoded: @unchecked Sendable where Key: Sendable, Value: Sendable {}

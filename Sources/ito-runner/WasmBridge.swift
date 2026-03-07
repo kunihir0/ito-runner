@@ -162,7 +162,7 @@ public class WasmBridge {
             }
 
             let elementId = try module.parse(html: htmlString)
-            print("WasmBridge HtmlParse returning: \(elementId)")
+            // print("WasmBridge HtmlParse returning: \(elementId)")
             return [.i32(elementId)]
         }
 
@@ -189,7 +189,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            print("WasmBridge HtmlSelect(id: \(elementId), selector: '\(selectorString)')")
+            // print("WasmBridge HtmlSelect(id: \(elementId), selector: '\(selectorString)')")
             let resultIds = try module.select(elementId: elementId, selector: selectorString)
             let resultInt32s = resultIds.map { Int32(bitPattern: $0) }
             let responseBytes = try self.runner.postcardEncoder.encode(resultInt32s)
@@ -227,7 +227,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            print("WasmBridge HtmlText(id: \(elementId))")
+            // print("WasmBridge HtmlText(id: \(elementId))")
             let text = try module.text(elementId: elementId)
             let responseBytes = try self.runner.postcardEncoder.encode(text)
 
@@ -273,7 +273,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            print("WasmBridge HtmlAttr(id: \(elementId), name: '\(attrName)')")
+            // print("WasmBridge HtmlAttr(id: \(elementId), name: '\(attrName)')")
             let attrVal = try module.attr(elementId: elementId, name: attrName)
             var responseBytes: [UInt8] = []
             if let val = attrVal {
@@ -311,7 +311,7 @@ public class WasmBridge {
                 throw ItoError.hostModuleError(domain: "html", message: "HtmlModule not provided")
             }
 
-            print("WasmBridge HtmlFree(id: \(elementId))")
+            // print("WasmBridge HtmlFree(id: \(elementId))")
             module.free(elementId: elementId)
             return []
         }
@@ -360,7 +360,7 @@ public class WasmBridge {
             return [.i64(packed)]
         }
 
-        let stdPrint = Function(store: store, parameters: [.i32, .i32], results: []) {
+        let stdprint = Function(store: store, parameters: [.i32, .i32], results: []) {
             [weak self] caller, args in
             guard let self = self else { return [] }
             let requestPtr = args[0].i32
@@ -507,7 +507,7 @@ public class WasmBridge {
                 "free": htmlFree,
             ],
             "ito:core/js": ["evaluate": jsEvaluate],
-            "ito:core/std": ["print": stdPrint],
+            "ito:core/std": ["print": stdprint],
             "ito:core/defaults": [
                 "set": defaultsSet,
                 "get": defaultsGet,

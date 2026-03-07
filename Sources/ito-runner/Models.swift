@@ -194,14 +194,16 @@ public struct Page: Codable, Sendable {
     public var content: PageContent
     public var hasDescription: Bool
     public var description: String?
+    @PostcardOptionalMapCoded public var headers: [String: String]?
 
     public init(
-        index: Int32, content: PageContent, hasDescription: Bool = false, description: String? = nil
+        index: Int32, content: PageContent, hasDescription: Bool = false, description: String? = nil, headers: [String: String]? = nil
     ) {
         self.index = index
         self.content = content
         self.hasDescription = hasDescription
         self.description = description
+        self._headers = PostcardOptionalMapCoded(wrappedValue: headers)
     }
 }
 
@@ -412,7 +414,7 @@ public struct Anime: Codable, Sendable {
     public struct Video: Codable, Sendable {
         public var url: String
         public var quality: String
-        public var headers: [String: String]?
+        @PostcardOptionalMapCoded public var headers: [String: String]?
         public var audioTracks: [AudioTrack]?
         public var subtitles: [Subtitle]?
 
@@ -422,7 +424,7 @@ public struct Anime: Codable, Sendable {
         ) {
             self.url = url
             self.quality = quality
-            self.headers = headers
+            self._headers = PostcardOptionalMapCoded(wrappedValue: headers)
             self.audioTracks = audioTracks
             self.subtitles = subtitles
         }
