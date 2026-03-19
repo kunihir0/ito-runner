@@ -1,7 +1,7 @@
 import Foundation
 
 /// A custom Decoder that decodes Postcard binary format into Swift `Decodable` types.
-public class ItoPostcardDecoder: @unchecked Sendable {
+public struct ItoPostcardDecoder: Sendable {
 
     public init() {}
 
@@ -16,6 +16,12 @@ public class ItoPostcardDecoder: @unchecked Sendable {
 
         let isMap = (type is PostcardMapDecodable.Type)
         decoder.userInfo[mapFlagKey] = isMap
+
+        if T.self is any PostcardEnum.Type {
+            let singleDecoder = try decoder.singleValueContainer() as! _PostcardSingleValueDecoder
+            let d = try singleDecoder.decodeVarint()
+            decoder.userInfo[enumDiscriminantKey] = UInt32(d)
+        }
 
         let resolvedType = try T(from: decoder)
 
@@ -34,6 +40,7 @@ public class ItoPostcardDecoder: @unchecked Sendable {
 protocol PostcardMapDecodable {}
 extension Dictionary: PostcardMapDecodable {}
 let mapFlagKey = CodingUserInfoKey(rawValue: "ito.postcard.isMap")!
+let enumDiscriminantKey = CodingUserInfoKey(rawValue: "ito.postcard.enumDiscriminant")!
 
 private class _PostcardDecoder: Decoder {
     var codingPath: [CodingKey] = []
@@ -68,7 +75,8 @@ private class _PostcardDecoder: Decoder {
                 debugDescription: "Force fallback to unkeyed container for Dictionary")
             throw DecodingError.typeMismatch(type, context)
         }
-        let container = _PostcardKeyedDecodingContainer<Key>(decoder: self)
+        let isEnum = (type is PostcardEnumKeys.Type)
+        let container = try _PostcardKeyedDecodingContainer<Key>(decoder: self, isEnum: isEnum)
         return KeyedDecodingContainer(container)
     }
 
@@ -92,9 +100,40 @@ private class _PostcardDecoder: Decoder {
 private struct _PostcardKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtocol {
     var codingPath: [CodingKey] { decoder.codingPath }
     let decoder: _PostcardDecoder
+    let isEnum: Bool
+    let discriminant: UInt32?
     var allKeys: [Key] = []
 
-    func contains(_ key: Key) -> Bool { return true }
+    init(decoder: _PostcardDecoder, isEnum: Bool = false) throws {
+        self.decoder = decoder
+        self.isEnum = isEnum
+
+        if let d = decoder.userInfo[enumDiscriminantKey] as? UInt32 {
+            self.discriminant = d
+            // Clear it so nested enums don't reuse it
+            decoder.userInfo[enumDiscriminantKey] = nil
+        } else if isEnum {
+            let singleDecoder = try decoder.singleValueContainer() as! _PostcardSingleValueDecoder
+            let d = try singleDecoder.decodeVarint()
+            self.discriminant = UInt32(d)
+        } else {
+            self.discriminant = nil
+        }
+
+        if let discriminant = self.discriminant {
+            let key = Key(intValue: Int(discriminant))
+            if let key = key {
+                self.allKeys = [key]
+            }
+        }
+    }
+
+    func contains(_ key: Key) -> Bool {
+        if let discriminant = discriminant {
+            return key.intValue == Int(discriminant)
+        }
+        return true
+    }
 
     func decodeNil(forKey key: Key) throws -> Bool {
         if !decoder.isAtEnd && decoder.data[decoder.currentIndex] == 0 {

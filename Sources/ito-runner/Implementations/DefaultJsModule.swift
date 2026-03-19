@@ -4,9 +4,14 @@ import JavaScriptCore
 /// The default implementation of `JsModule` using `JavaScriptCore`.
 public final class DefaultJsModule: JsModule, @unchecked Sendable {
 
+    private let lock = NSLock()
+
     public init() {}
 
     public func evaluate(script: String) throws -> String {
+        lock.lock()
+        defer { lock.unlock() }
+
         // JavaScriptCore contexts should be isolated per plugin if possible,
         // but for now we create a fresh context per evaluation or maintain one.
         // Creating a new context for every eval is safer and avoids memory leaks,

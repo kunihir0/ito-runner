@@ -5,8 +5,7 @@ import Foundation
 /// Swift's `Dictionary` encoding expects `KeyedDecodingContainer` for String/Int keys, which fails for sequential Postcard streams.
 /// This wrapper forces the use of `UnkeyedDecodingContainer` and handles the Postcard Map structure explicitly.
 @propertyWrapper
-public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable,
-    PostcardMapDecodable {
+public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable, PostcardMapDecodable {
     public var wrappedValue: [Key: Value]
 
     public init(wrappedValue: [Key: Value]) {
@@ -14,25 +13,16 @@ public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable
     }
 
     public init(from decoder: Decoder) throws {
-        // Because we conform to PostcardMapDecodable, _PostcardDecoder sets the isMap flag.
-        // This causes _PostcardUnkeyedDecodingContainer to multiply the varint count by 2.
-
+        // PostcardDecoder uses the PostcardMapDecodable conformance to set the map flag.
         var container = try decoder.unkeyedContainer()
-
-        // container.count is now (Entries * 2).
-        let totalItems = container.count ?? 0
+        
+        guard let totalItems = container.count else {
+            throw ItoError.postcardDecodingError("Map missing count header")
+        }
+        
         let entries = totalItems / 2
-
-        var dict = [Key: Value](minimumCapacity: entries)
-
-        // We iterate 'entries' times, decoding 2 items per loop.
-        // Or we iterate 'totalItems' times?
-        // UnkeyedContainer tracks index per decode().
-        // So we just decode Key then Value.
-
-        // Wait, if we use `for _ in 0..<entries`, we call decode() twice.
-        // That advances index by 2.
-        // This is correct.
+        let capacity = min(entries, 1000) 
+        var dict = [Key: Value](minimumCapacity: capacity)
 
         for _ in 0..<entries {
             let key = try container.decode(Key.self)
@@ -45,6 +35,7 @@ public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.unkeyedContainer()
+        // Postcard Map: [count, k1, v1, ...]
         try container.encode(UInt64(wrappedValue.count))
         for (key, value) in wrappedValue {
             try container.encode(key)
@@ -54,12 +45,10 @@ public struct PostcardMapCoded<Key: Hashable & Codable, Value: Codable>: Codable
 }
 
 extension PostcardMapCoded: Equatable where Value: Equatable {}
-
-extension PostcardMapCoded: @unchecked Sendable where Key: Sendable, Value: Sendable {}
+extension PostcardMapCoded: Sendable where Key: Sendable, Value: Sendable {}
 
 @propertyWrapper
-public struct PostcardOptionalMapCoded<Key: Hashable & Codable, Value: Codable>: Codable,
-    PostcardMapDecodable {
+public struct PostcardOptionalMapCoded<Key: Hashable & Codable, Value: Codable>: Codable, PostcardMapDecodable {
     public var wrappedValue: [Key: Value]?
 
     public init(wrappedValue: [Key: Value]?) {
@@ -67,44 +56,25 @@ public struct PostcardOptionalMapCoded<Key: Hashable & Codable, Value: Codable>:
     }
 
     public init(from decoder: Decoder) throws {
-        let singleContainer = try decoder.singleValueContainer()
-        // If it's an Option::None in Postcard, it consumes the '0' byte
-        if singleContainer.decodeNil() {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
             self.wrappedValue = nil
         } else {
-            // It was Option::Some, the '1' byte was consumed. Now read the map.
-            var container = try decoder.unkeyedContainer()
-            let totalItems = container.count ?? 0
-            let entries = totalItems / 2
-            var dict = [Key: Value](minimumCapacity: entries)
-
-            for _ in 0..<entries {
-                let key = try container.decode(Key.self)
-                let value = try container.decode(Value.self)
-                dict[key] = value
-            }
-
-            self.wrappedValue = dict
+            // It was Option::Some (1), now decode the map using the same logic as above
+            self.wrappedValue = try PostcardMapCoded<Key, Value>(from: decoder).wrappedValue
         }
     }
 
     public func encode(to encoder: Encoder) throws {
-        var singleContainer = encoder.singleValueContainer()
+        var container = encoder.singleValueContainer()
         if let dict = wrappedValue {
-            try singleContainer.encode(true) // 1 for Option::Some
-
-            var container = encoder.unkeyedContainer()
-            try container.encode(UInt64(dict.count))
-            for (key, value) in dict {
-                try container.encode(key)
-                try container.encode(value)
-            }
+            try container.encode(true) // Option::Some
+            try PostcardMapCoded(wrappedValue: dict).encode(to: encoder)
         } else {
-            try singleContainer.encodeNil() // 0 for Option::None
+            try container.encodeNil() // Option::None
         }
     }
 }
 
 extension PostcardOptionalMapCoded: Equatable where Value: Equatable {}
-
-extension PostcardOptionalMapCoded: @unchecked Sendable where Key: Sendable, Value: Sendable {}
+extension PostcardOptionalMapCoded: Sendable where Key: Sendable, Value: Sendable {}

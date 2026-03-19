@@ -60,7 +60,7 @@ public class WasmBridge {
             let requestLen = args[1].i32
 
             guard let memory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Plugin must export linear memory")
+                throw ItoError.wasmTrap("Plugin must export linear memory")
             }
 
             let requestBytes = memory.withUnsafeMutableBufferPointer(
@@ -112,7 +112,7 @@ public class WasmBridge {
                 self.pendingNetResponseBytes = responseBytes
                 return [.i32(UInt32(responseBytes.count))]
             } catch {
-                fatalError("Failed to decode NetRequest or serialize NetResponse: \(error)")
+                throw ItoError.wasmTrap("Failed to decode NetRequest or serialize NetResponse: \(error)")
             }
         }
 
@@ -122,10 +122,10 @@ public class WasmBridge {
             let destPtr = args[0].i32
 
             guard let bytes = self.pendingNetResponseBytes else {
-                fatalError("fetch_read called but no pending response bytes exist")
+                throw ItoError.wasmTrap("fetch_read called but no pending response bytes exist")
             }
             guard let memory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Plugin must export linear memory")
+                throw ItoError.wasmTrap("Plugin must export linear memory")
             }
 
             memory.withUnsafeMutableBufferPointer(
@@ -147,7 +147,7 @@ public class WasmBridge {
             let requestLen = args[1].i32
 
             guard let memory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Plugin must export linear memory")
+                throw ItoError.wasmTrap("Plugin must export linear memory")
             }
 
             let htmlString = memory.withUnsafeMutableBufferPointer(
@@ -175,7 +175,7 @@ public class WasmBridge {
             guard let memory = caller.instance?.exports[memory: "memory"],
                 let alloc = caller.instance?.exports[function: "alloc"]
             else {
-                fatalError("Plugin must export memory and alloc")
+                throw ItoError.wasmTrap("Plugin must export memory and alloc")
             }
 
             let selectorString = memory.withUnsafeMutableBufferPointer(
@@ -197,7 +197,7 @@ public class WasmBridge {
             let responsePtr = allocResult[0].i32
 
             guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Memory lost after alloc")
+                throw ItoError.wasmTrap("Memory lost after alloc")
             }
 
             refetchedMemory.withUnsafeMutableBufferPointer(
@@ -219,7 +219,7 @@ public class WasmBridge {
 
             guard let alloc = caller.instance?.exports[function: "alloc"]
             else {
-                fatalError("Plugin must export alloc")
+                throw ItoError.wasmTrap("Plugin must export alloc")
             }
 
             guard let module = self.htmlModule else {
@@ -234,7 +234,7 @@ public class WasmBridge {
             let responsePtr = allocResult[0].i32
 
             guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Memory lost after alloc")
+                throw ItoError.wasmTrap("Memory lost after alloc")
             }
 
             refetchedMemory.withUnsafeMutableBufferPointer(
@@ -259,7 +259,7 @@ public class WasmBridge {
             guard let memory = caller.instance?.exports[memory: "memory"],
                 let alloc = caller.instance?.exports[function: "alloc"]
             else {
-                fatalError("Plugin must export memory and alloc")
+                throw ItoError.wasmTrap("Plugin must export memory and alloc")
             }
 
             let attrName = memory.withUnsafeMutableBufferPointer(
@@ -286,7 +286,7 @@ public class WasmBridge {
             let responsePtr = allocResult[0].i32
 
             guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Memory lost after alloc")
+                throw ItoError.wasmTrap("Memory lost after alloc")
             }
 
             refetchedMemory.withUnsafeMutableBufferPointer(
@@ -324,7 +324,7 @@ public class WasmBridge {
             guard let memory = caller.instance?.exports[memory: "memory"],
                 let alloc = caller.instance?.exports[function: "alloc"]
             else {
-                fatalError("Plugin must export memory and alloc")
+                throw ItoError.wasmTrap("Plugin must export memory and alloc")
             }
 
             let scriptString = memory.withUnsafeMutableBufferPointer(
@@ -344,7 +344,7 @@ public class WasmBridge {
             let responsePtr = allocResult[0].i32
 
             guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Memory lost after alloc")
+                throw ItoError.wasmTrap("Memory lost after alloc")
             }
 
             refetchedMemory.withUnsafeMutableBufferPointer(
@@ -366,7 +366,7 @@ public class WasmBridge {
             let requestLen = args[1].i32
 
             guard let memory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Plugin must export memory")
+                throw ItoError.wasmTrap("Plugin must export memory")
             }
 
             let string = memory.withUnsafeMutableBufferPointer(
@@ -392,7 +392,7 @@ public class WasmBridge {
             let valLen = args[3].i32
 
             guard let memory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Plugin must export memory")
+                throw ItoError.wasmTrap("Plugin must export memory")
             }
 
             let key = memory.withUnsafeMutableBufferPointer(
@@ -425,7 +425,7 @@ public class WasmBridge {
             guard let memory = caller.instance?.exports[memory: "memory"],
                 let alloc = caller.instance?.exports[function: "alloc"]
             else {
-                fatalError("Plugin must export memory and alloc")
+                throw ItoError.wasmTrap("Plugin must export memory and alloc")
             }
 
             let key = memory.withUnsafeMutableBufferPointer(
@@ -452,7 +452,7 @@ public class WasmBridge {
             let responsePtr = allocResult[0].i32
 
             guard let refetchedMemory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Memory lost after alloc")
+                throw ItoError.wasmTrap("Memory lost after alloc")
             }
 
             refetchedMemory.withUnsafeMutableBufferPointer(
@@ -474,7 +474,7 @@ public class WasmBridge {
             let keyLen = args[1].i32
 
             guard let memory = caller.instance?.exports[memory: "memory"] else {
-                fatalError("Plugin must export memory")
+                throw ItoError.wasmTrap("Plugin must export memory")
             }
 
             let key = memory.withUnsafeMutableBufferPointer(

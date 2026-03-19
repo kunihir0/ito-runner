@@ -24,7 +24,7 @@ public struct PluginManifest: Codable, Sendable {
     }
 }
 
-public enum PluginType: String, Codable, Sendable {
+public enum PluginType: String, Codable, Sendable, PostcardEnumMarker {
     case manga
     case anime
     case novel
@@ -98,14 +98,14 @@ public struct PluginInfo: Codable, Sendable {
         self.tags = try container.decodeIfPresent([String].self, forKey: .tags)
     }}
 
-public enum ContentRating: Int32, Codable, Sendable {
+public enum ContentRating: Int32, Codable, Sendable, PostcardEnumMarker {
     case Safe = 0
     case Suggestive = 1  // Ecchi
     case Nsfw = 2  // Pornographic
 }
 
 public struct Manga: Codable, Sendable {
-    public enum Status: Int32, Codable, Sendable {
+    public enum Status: Int32, Codable, Sendable, PostcardEnumMarker {
         case Unknown = 0
         case Ongoing = 1
         case Completed = 2
@@ -113,7 +113,7 @@ public struct Manga: Codable, Sendable {
         case Hiatus = 4
     }
 
-    public enum Viewer: Int32, Codable, Sendable {
+    public enum Viewer: Int32, Codable, Sendable, PostcardEnumMarker {
         case Default = 0
         case Rtl = 1
         case Ltr = 2
@@ -196,7 +196,7 @@ public struct Manga: Codable, Sendable {
 }
 
 public struct Novel: Codable, Sendable {
-    public enum Status: Int32, Codable, Sendable {
+    public enum Status: Int32, Codable, Sendable, PostcardEnumMarker {
         case Unknown = 0
         case Ongoing = 1
         case Completed = 2
@@ -276,32 +276,13 @@ public struct Novel: Codable, Sendable {
     }
 }
 
-public enum PageContent: Codable, Sendable {
+public enum PageContent: Codable, Sendable, PostcardEnumMarker {
     case url(String)
     case text(String)
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let variant = try container.decode(UInt32.self)
-        switch variant {
-        case 0: self = .url(try container.decode(String.self))
-        case 1: self = .text(try container.decode(String.self))
-        default:
-            throw DecodingError.dataCorruptedError(
-                in: container, debugDescription: "Unknown PageContent variant")
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        switch self {
-        case .url(let s):
-            try container.encode(0 as UInt32)
-            try container.encode(s)
-        case .text(let s):
-            try container.encode(1 as UInt32)
-            try container.encode(s)
-        }
+    enum CodingKeys: Int, CodingKey, PostcardEnumKeys {
+        case url = 0
+        case text = 1
     }
 }
 
@@ -341,42 +322,17 @@ public struct FilterStruct: Codable, Sendable {
     public let value: FilterValue
 }
 
-public enum FilterValue: Codable, Sendable {
+public enum FilterValue: Codable, Sendable, PostcardEnumMarker {
     case boolean(Bool)
     case int(Int64)
     case float(Double)
     case string(String)
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let variant = try container.decode(UInt32.self)
-        switch variant {
-        case 0: self = .boolean(try container.decode(Bool.self))
-        case 1: self = .int(try container.decode(Int64.self))
-        case 2: self = .float(try container.decode(Double.self))
-        case 3: self = .string(try container.decode(String.self))
-        default:
-            throw DecodingError.dataCorruptedError(
-                in: container, debugDescription: "Unknown FilterValue variant")
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        switch self {
-        case .boolean(let b):
-            try container.encode(0 as UInt32)
-            try container.encode(b)
-        case .int(let i):
-            try container.encode(1 as UInt32)
-            try container.encode(i)
-        case .float(let f):
-            try container.encode(2 as UInt32)
-            try container.encode(f)
-        case .string(let s):
-            try container.encode(3 as UInt32)
-            try container.encode(s)
-        }
+    enum CodingKeys: Int, CodingKey, PostcardEnumKeys {
+        case boolean = 0
+        case int = 1
+        case float = 2
+        case string = 3
     }
 }
 
@@ -384,24 +340,6 @@ public struct FilterItem: Codable, Sendable {
     public var type: String
     public var name: String
     public var value: FilterValue
-
-    public init(from decoder: Decoder) throws {
-        // Based on Aidoku's implementation, FilterItem is an enum with string variants and struct variants
-        // Let's implement it as a String for now, since it can coerce in the test `aidoku::FilterItem::from("Action")`
-        // Or if it refers to actual struct instances. For now, matching the FilterStruct format.
-        let container = try decoder.singleValueContainer()
-        self.type = try container.decode(String.self)
-        self.name = try container.decode(String.self)
-        self.value = try container.decode(FilterValue.self)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        // Enforce the tuple structure expected by some rust enum variants using UnkeyedContainer
-        var container = encoder.unkeyedContainer()
-        try container.encode(type)
-        try container.encode(name)
-        try container.encode(value)
-    }
 }
 
 public struct Link: Codable, Sendable {
@@ -424,47 +362,19 @@ public struct NovelWithChapter: Codable, Sendable {
     }
 }
 
-public enum LinkValue: Codable, Sendable {
+public enum LinkValue: Codable, Sendable, PostcardEnumMarker {
     case url(String)
     case manga(Manga)
     case anime(Anime)
     case novel(Novel)
     case listing(Listing)
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let variant = try container.decode(UInt32.self)
-        switch variant {
-        case 0: self = .url(try container.decode(String.self))
-        case 1: self = .manga(try container.decode(Manga.self))
-        case 2: self = .anime(try container.decode(Anime.self))
-        case 3: self = .novel(try container.decode(Novel.self))
-        case 4: self = .listing(try container.decode(Listing.self))
-        default:
-            throw DecodingError.dataCorruptedError(
-                in: container, debugDescription: "Unknown LinkValue variant")
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        switch self {
-        case .url(let s):
-            try container.encode(0 as UInt32)
-            try container.encode(s)
-        case .manga(let m):
-            try container.encode(1 as UInt32)
-            try container.encode(m)
-        case .anime(let a):
-            try container.encode(2 as UInt32)
-            try container.encode(a)
-        case .novel(let n):
-            try container.encode(3 as UInt32)
-            try container.encode(n)
-        case .listing(let l):
-            try container.encode(4 as UInt32)
-            try container.encode(l)
-        }
+    enum CodingKeys: Int, CodingKey, PostcardEnumKeys {
+        case url = 0
+        case manga = 1
+        case anime = 2
+        case novel = 3
+        case listing = 4
     }
 }
 
@@ -489,7 +399,7 @@ public struct AnimeWithEpisode: Codable, Sendable {
 }
 
 public struct Anime: Codable, Sendable {
-    public enum Status: Int32, Codable, Sendable {
+    public enum Status: Int32, Codable, Sendable, PostcardEnumMarker {
         case Unknown = 0
         case Ongoing = 1
         case Completed = 2
@@ -617,22 +527,7 @@ public struct Anime: Codable, Sendable {
     }
 }
 
-private struct PostcardOption<T: Codable & Sendable>: Codable, Sendable {
-    let value: T?
-    init(_ value: T?) { self.value = value }
-    func encode(to encoder: Encoder) throws {
-        if let value = value {
-            var container = encoder.singleValueContainer()
-            try container.encode(true)
-            try value.encode(to: encoder)
-        } else {
-            var container = encoder.singleValueContainer()
-            try container.encodeNil()
-        }
-    }
-}
-
-public enum HomeComponentValue: Codable, Sendable {
+public enum HomeComponentValue: Codable, Sendable, PostcardEnumMarker {
     case scroller([Manga], Listing?)
     case mangaList(Bool, Int32?, [Manga], Listing?)
     case mangaChapterList(Int32?, [MangaWithChapter], Listing?)
@@ -648,142 +543,21 @@ public enum HomeComponentValue: Codable, Sendable {
     case filters([FilterItem])
     case links([Link])
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let variant = try container.decode(UInt32.self)
-        switch variant {
-        case 0:
-            self = .scroller(
-                try container.decode([Manga].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 1:
-            self = .mangaList(
-                try container.decode(Bool.self),
-                container.decodeNil() ? nil : try container.decode(Int32.self),
-                try container.decode([Manga].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 2:
-            self = .mangaChapterList(
-                container.decodeNil() ? nil : try container.decode(Int32.self),
-                try container.decode([MangaWithChapter].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 3:
-            self = .animeScroller(
-                try container.decode([Anime].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 4:
-            self = .animeList(
-                try container.decode(Bool.self),
-                container.decodeNil() ? nil : try container.decode(Int32.self),
-                try container.decode([Anime].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 5:
-            self = .animeEpisodeList(
-                container.decodeNil() ? nil : try container.decode(Int32.self),
-                try container.decode([AnimeWithEpisode].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 6:
-            self = .bigScroller(
-                try container.decode([Manga].self),
-                container.decodeNil() ? nil : try container.decode(Float32.self))
-        case 7:
-            self = .animeBigScroller(
-                try container.decode([Anime].self),
-                container.decodeNil() ? nil : try container.decode(Float32.self))
-        case 8:
-            self = .novelScroller(
-                try container.decode([Novel].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 9:
-            self = .novelList(
-                try container.decode(Bool.self),
-                container.decodeNil() ? nil : try container.decode(Int32.self),
-                try container.decode([Novel].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 10:
-            self = .novelChapterList(
-                container.decodeNil() ? nil : try container.decode(Int32.self),
-                try container.decode([NovelWithChapter].self),
-                container.decodeNil() ? nil : try container.decode(Listing.self))
-        case 11:
-            self = .novelBigScroller(
-                try container.decode([Novel].self),
-                container.decodeNil() ? nil : try container.decode(Float32.self))
-        case 12: self = .filters(try container.decode([FilterItem].self))
-        case 13: self = .links(try container.decode([Link].self))
-        default:
-            throw DecodingError.dataCorruptedError(
-                in: container, debugDescription: "Unknown HomeComponentValue variant")
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        switch self {
-        case .scroller(let entries, let listing):
-            try container.encode(0 as UInt32)
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .mangaList(let ranking, let pageSize, let entries, let listing):
-            try container.encode(1 as UInt32)
-            try container.encode(ranking)
-            try container.encode(PostcardOption(pageSize))
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .mangaChapterList(let pageSize, let entries, let listing):
-            try container.encode(2 as UInt32)
-            try container.encode(PostcardOption(pageSize))
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .animeScroller(let entries, let listing):
-            try container.encode(3 as UInt32)
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .animeList(let ranking, let pageSize, let entries, let listing):
-            try container.encode(4 as UInt32)
-            try container.encode(ranking)
-            try container.encode(PostcardOption(pageSize))
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .animeEpisodeList(let pageSize, let entries, let listing):
-            try container.encode(5 as UInt32)
-            try container.encode(PostcardOption(pageSize))
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .bigScroller(let entries, let interval):
-            try container.encode(6 as UInt32)
-            try container.encode(entries)
-            try container.encode(PostcardOption(interval))
-        case .animeBigScroller(let entries, let interval):
-            try container.encode(7 as UInt32)
-            try container.encode(entries)
-            try container.encode(PostcardOption(interval))
-        case .novelScroller(let entries, let listing):
-            try container.encode(8 as UInt32)
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .novelList(let ranking, let pageSize, let entries, let listing):
-            try container.encode(9 as UInt32)
-            try container.encode(ranking)
-            try container.encode(PostcardOption(pageSize))
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .novelChapterList(let pageSize, let entries, let listing):
-            try container.encode(10 as UInt32)
-            try container.encode(PostcardOption(pageSize))
-            try container.encode(entries)
-            try container.encode(PostcardOption(listing))
-        case .novelBigScroller(let entries, let interval):
-            try container.encode(11 as UInt32)
-            try container.encode(entries)
-            try container.encode(PostcardOption(interval))
-        case .filters(let items):
-            try container.encode(12 as UInt32)
-            try container.encode(items)
-        case .links(let links):
-            try container.encode(13 as UInt32)
-            try container.encode(links)
-        }
+    enum CodingKeys: Int, CodingKey, PostcardEnumKeys {
+        case scroller = 0
+        case mangaList = 1
+        case mangaChapterList = 2
+        case animeScroller = 3
+        case animeList = 4
+        case animeEpisodeList = 5
+        case bigScroller = 6
+        case animeBigScroller = 7
+        case novelScroller = 8
+        case novelList = 9
+        case novelChapterList = 10
+        case novelBigScroller = 11
+        case filters = 12
+        case links = 13
     }
 }
 

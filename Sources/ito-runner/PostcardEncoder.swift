@@ -2,7 +2,7 @@ import Foundation
 
 /// A custom Encoder that encodes Swift `Encodable` types into the Postcard binary format.
 /// Postcard is a #![no_std] focused serialization format used heavily in Rust ecosystems.
-public class ItoPostcardEncoder: @unchecked Sendable {
+public struct ItoPostcardEncoder: Sendable {
 
     public init() {}
 
@@ -28,6 +28,11 @@ public class ItoPostcardEncoder: @unchecked Sendable {
         if let array = value as? PostcardArrayMarker {
             var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
             try container.encodeVarint(UInt64(array.postcardCount))
+        }
+
+        if let pcEnum = value as? any PostcardEnum {
+            var sc = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+            try sc.encodeVarint(UInt64(pcEnum.postcardDiscriminant))
         }
 
         try value.encode(to: encoder)
@@ -59,6 +64,7 @@ extension Dictionary: PostcardMapMarker {
     }
 }
 
+/// A custom Encoder that encodes Swift `Encodable` types into the Postcard binary format.
 private class _PostcardEncoder: Encoder {
     var codingPath: [CodingKey] = []
     var userInfo: [CodingUserInfoKey: Any] = [:]
@@ -68,7 +74,8 @@ private class _PostcardEncoder: Encoder {
 
     func container<Key>(keyedBy type: Key.Type) -> KeyedEncodingContainer<Key>
     where Key: CodingKey {
-        let container = _PostcardKeyedEncodingContainer<Key>(encoder: self)
+        let isEnum = (type is PostcardEnumKeys.Type)
+        let container = _PostcardKeyedEncodingContainer<Key>(encoder: self, isEnum: isEnum)
         return KeyedEncodingContainer(container)
     }
 
@@ -81,22 +88,36 @@ private class _PostcardEncoder: Encoder {
     }
 }
 
-private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtocol {
+private class _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtocol {
     var codingPath: [CodingKey] { encoder.codingPath }
     let encoder: _PostcardEncoder
+    let isEnum: Bool
+    var wroteDiscriminant: Bool = false
 
-    // Note: Postcard does NOT encode keys. It relies entirely on the order of fields in the struct.
-    // Therefore, all encode methods here simply forward the value to the encoder.
+    init(encoder: _PostcardEncoder, isEnum: Bool = false) {
+        self.encoder = encoder
+        self.isEnum = isEnum
+    }
 
-    mutating func encodeNil(forKey key: Key) throws {
-        // Postcard encodes generic Optionals as 0 for None, 1 for Some.
-        // It's tricky to handle explicit nils without the type, but standard Encodable
-        // usually hits encode(Optional) which handles it. We fallback to single value encoder.
+    private func writeDiscriminantIfNeeded(key: Key) throws {
+        if isEnum && !wroteDiscriminant {
+            guard let intValue = key.intValue else {
+                throw ItoError.postcardEncodingError("Enum key '\(key.stringValue)' missing intValue for discriminant")
+            }
+            var container = encoder.singleValueContainer() as! _PostcardSingleValueEncoder
+            try container.encodeVarint(UInt64(intValue))
+            wroteDiscriminant = true
+        }
+    }
+
+    func encodeNil(forKey key: Key) throws {
+        try writeDiscriminantIfNeeded(key: key)
         var container = encoder.singleValueContainer()
         try container.encodeNil()
     }
 
-    mutating func encode<T>(_ value: T, forKey key: Key) throws where T: Encodable {
+    func encode<T>(_ value: T, forKey key: Key) throws where T: Encodable {
+        try writeDiscriminantIfNeeded(key: key)
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
 
@@ -121,7 +142,8 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
     }
 
     // Override encodeIfPresent to ensure `nil` is explicitly encoded as `0` in Postcard
-    mutating func encodeIfPresent<T>(_ value: T?, forKey key: Key) throws where T: Encodable {
+    func encodeIfPresent<T>(_ value: T?, forKey key: Key) throws where T: Encodable {
+        try writeDiscriminantIfNeeded(key: key)
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
 
@@ -153,7 +175,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
         }
     }
 
-    mutating func encodeIfPresent(_ value: Bool?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Bool?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -165,7 +187,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: String?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: String?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -177,7 +199,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: Double?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Double?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -189,7 +211,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: Float?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Float?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -201,7 +223,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: Int?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Int?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -213,7 +235,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: Int8?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Int8?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -225,7 +247,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: Int16?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Int16?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -237,7 +259,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: Int32?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Int32?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -249,7 +271,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: Int64?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: Int64?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -261,7 +283,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: UInt?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: UInt?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -273,7 +295,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: UInt8?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: UInt8?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -285,7 +307,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: UInt16?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: UInt16?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -297,7 +319,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: UInt32?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: UInt32?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -309,7 +331,7 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func encodeIfPresent(_ value: UInt64?, forKey key: Key) throws {
+    func encodeIfPresent(_ value: UInt64?, forKey key: Key) throws {
         encoder.codingPath.append(key)
         defer { encoder.codingPath.removeLast() }
         if let value = value {
@@ -321,22 +343,24 @@ private struct _PostcardKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingCon
             try container.encodeNil()
         }
     }
-    mutating func nestedContainer<NestedKey>(keyedBy keyType: NestedKey.Type, forKey key: Key)
+    func nestedContainer<NestedKey>(keyedBy keyType: NestedKey.Type, forKey key: Key)
         -> KeyedEncodingContainer<NestedKey> where NestedKey: CodingKey {
+        try? writeDiscriminantIfNeeded(key: key)
         encoder.codingPath.append(key)
         return encoder.container(keyedBy: keyType)
     }
 
-    mutating func nestedUnkeyedContainer(forKey key: Key) -> UnkeyedEncodingContainer {
+    func nestedUnkeyedContainer(forKey key: Key) -> UnkeyedEncodingContainer {
+        try? writeDiscriminantIfNeeded(key: key)
         encoder.codingPath.append(key)
         return encoder.unkeyedContainer()
     }
 
-    mutating func superEncoder() -> Encoder {
+    func superEncoder() -> Encoder {
         return encoder
     }
 
-    mutating func superEncoder(forKey key: Key) -> Encoder {
+    func superEncoder(forKey key: Key) -> Encoder {
         encoder.codingPath.append(key)
         return encoder
     }
