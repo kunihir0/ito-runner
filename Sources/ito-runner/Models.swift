@@ -71,7 +71,7 @@ public struct PluginInfo: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, version, minAppVersion = "min_app_version", url, sourceUrl, contentRating, nsfw, language, languages, type, author, description, tags
     }
-
+    
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
@@ -104,7 +104,9 @@ public enum ContentRating: Int32, Codable, Sendable, PostcardEnumMarker {
     case Nsfw = 2  // Pornographic
 }
 
-public struct Manga: Codable, Sendable {
+public struct Manga: Codable, Sendable, Identifiable {
+    public var id: String { key }
+
     public enum Status: Int32, Codable, Sendable, PostcardEnumMarker {
         case Unknown = 0
         case Ongoing = 1
@@ -131,7 +133,8 @@ public struct Manga: Codable, Sendable {
         }
     }
 
-    public struct Chapter: Codable, Sendable {
+    public struct Chapter: Codable, Sendable, Identifiable {
+        public var id: String { key }
         public var key: String
         public var title: String?
         public var volume: Float32?
@@ -195,7 +198,9 @@ public struct Manga: Codable, Sendable {
     }
 }
 
-public struct Novel: Codable, Sendable {
+public struct Novel: Codable, Sendable, Identifiable {
+    public var id: String { key }
+
     public enum Status: Int32, Codable, Sendable, PostcardEnumMarker {
         case Unknown = 0
         case Ongoing = 1
@@ -214,7 +219,8 @@ public struct Novel: Codable, Sendable {
         }
     }
 
-    public struct Chapter: Codable, Sendable {
+    public struct Chapter: Codable, Sendable, Identifiable {
+        public var id: String { key }
         public var key: String
         public var title: String?
         public var volume: Float32?
@@ -398,7 +404,9 @@ public struct AnimeWithEpisode: Codable, Sendable {
     }
 }
 
-public struct Anime: Codable, Sendable {
+public struct Anime: Codable, Sendable, Identifiable {
+    public var id: String { key }
+
     public enum Status: Int32, Codable, Sendable, PostcardEnumMarker {
         case Unknown = 0
         case Ongoing = 1
@@ -407,7 +415,8 @@ public struct Anime: Codable, Sendable {
         case Hiatus = 4
     }
 
-    public struct Episode: Codable, Sendable {
+    public struct Episode: Codable, Sendable, Identifiable {
+        public var id: String { key }
         public var key: String
         public var title: String?
         public var episode: Float32?
